@@ -2,6 +2,8 @@
 
 namespace WCIG;
 
+use WCIG\Controllers;
+
 defined('ABSPATH') || exit;
 
 final class Core {
@@ -12,6 +14,20 @@ final class Core {
      * @var Core
      */
     protected static $instance;
+
+    /**
+     * Dependencies errors array.
+     * 
+     * @var array
+     */
+    protected $errors = [];
+
+    /**
+     * WCIG controllers.
+     * 
+     * @var array
+     */
+    protected $controllers = [];
 
     protected function __construct() {
         spl_autoload_register([$this, 'autoload']);
@@ -48,7 +64,57 @@ final class Core {
     public static function deactivate() {
     }
 
+    protected function check_dependencies() {
+        if(!class_exists('WooCommerce')) {
+            $this->errors[] = __('Woo Checkout Image Guard required installed and activated Woocommerce plugin.', 'woo-checkout-image-guard');
+        }
+
+        return empty($this->errors);
+    }
+
+    public function print_dependencies_errors() {
+        return (new View())
+            ->set_template('notice-error')
+            ->set_args(['errors' => $this->errors])
+            ->render()
+        ;
+    }
+
+    protected function setup_controllers() {
+        $this->controllers = [
+            'checkout' => new Controllers\Checkout()
+        ];
+
+        return $this;
+    }
+
+    protected function setup_actions() {
+        add_action('woocommerce_review_order_before_submit', [$this->controllers['checkout'], 'before_submit']);
+        
+        return $this;
+    }
+
+    protected function setup_filters() {
+        return $this;
+    }
+
     public function setup() {
+        if($this->check_dependencies()) {
+            $this
+                ->setup_controllers()
+                ->setup_actions()
+                ->setup_filters()
+            ;
+        } else {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            
+            if(isset($_GET['activate'])) {
+                unset($_GET['activate']);
+            }
+
+            deactivate_plugins(plugin_basename(WCIG_FILE));
+            add_action('admin_notices', [$this, 'print_dependencies_errors']);
+        }
     }
 
 }
