@@ -16,13 +16,6 @@ final class Core {
     protected static $instance;
 
     /**
-     * Dependencies errors array.
-     * 
-     * @var array
-     */
-    protected $errors = [];
-
-    /**
      * WCIG controllers.
      * 
      * @var array
@@ -31,11 +24,7 @@ final class Core {
 
     protected function __construct() {
         spl_autoload_register([$this, 'autoload']);
-
-        register_activation_hook(WCIG_FILE, [__CLASS__, 'activate']);
-        register_deactivation_hook(WCIG_FILE, [__CLASS__, 'deactivate']);
-
-        add_action('plugins_loaded', [$this, 'setup']);
+        $this->setup();
     }
 
     public static function instance() {
@@ -45,7 +34,7 @@ final class Core {
 
         return self::$instance;
     }
-
+    
     public function autoload($class) {
         $class = str_replace('WCIG\\', '', $class);
         $path = str_replace('\\', '/', $class) . '.php';
@@ -58,39 +47,50 @@ final class Core {
         require_once $file;
     }
 
-    public static function activate() {
-    }
-
-    public static function deactivate() {
-    }
-
-    protected function check_dependencies() {
-        if(!class_exists('WooCommerce')) {
-            $this->errors[] = __('Woo Checkout Image Guard required installed and activated Woocommerce plugin.', 'woo-checkout-image-guard');
-        }
-
-        return empty($this->errors);
-    }
-
-    public function print_dependencies_errors() {
-        return (new View())
-            ->set_template('notice-error')
-            ->set_args(['errors' => $this->errors])
-            ->render()
-        ;
-    }
-
     protected function setup_controllers() {
         $this->controllers = [
-            'checkout' => new Controllers\Checkout()
+            'activation' => new Controllers\Activation(),
+            'deactivation' => new Controllers\Deactivation(),
+            'dependency-check' => new Controllers\DependencyCheck()
         ];
 
         return $this;
     }
 
+    protected function setup_activation_hook() {
+        register_activation_hook(WCIG_FILE, [
+            $this->controllers['activation'], 
+            'activate'
+        ]);
+
+        return $this;
+    }
+
+    protected function setup_deactivation_hook() {
+        register_activation_hook(WCIG_FILE, [
+            $this->controllers['deactivation'], 
+            'deactivate'
+        ]);
+
+        return $this;
+    }
+
     protected function setup_actions() {
-        add_action('woocommerce_review_order_before_submit', [$this->controllers['checkout'], 'before_submit']);
-        
+        add_action('plugins_loaded', [
+            $this->controllers['dependency-check'],
+            'check_dependencies'
+        ]);
+
+        add_action('init', [
+            $this->controllers['dependency-check'],
+            'toggle_plugin_status'
+        ]);
+
+        add_action('admin_notices', [
+            $this->controllers['dependency-check'],
+            'print_dependencies_errors'
+        ]);
+
         return $this;
     }
 
@@ -98,23 +98,14 @@ final class Core {
         return $this;
     }
 
-    public function setup() {
-        if($this->check_dependencies()) {
-            $this
-                ->setup_controllers()
-                ->setup_actions()
-                ->setup_filters()
-            ;
-        } else {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-            
-            if(isset($_GET['activate'])) {
-                unset($_GET['activate']);
-            }
-
-            deactivate_plugins(plugin_basename(WCIG_FILE));
-            add_action('admin_notices', [$this, 'print_dependencies_errors']);
-        }
+    protected function setup() {
+        $this
+            ->setup_controllers()
+            ->setup_activation_hook()
+            ->setup_deactivation_hook()
+            ->setup_actions()
+            ->setup_filters()
+        ;
     }
 
 }
