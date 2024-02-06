@@ -51,7 +51,9 @@ final class Core {
         $this->controllers = [
             'activation' => new Controllers\Activation(),
             'deactivation' => new Controllers\Deactivation(),
-            'dependency-check' => new Controllers\DependencyCheck()
+            'dependency-check' => new Controllers\DependencyCheck(),
+            'language' => new Controllers\Language(),
+            'checkout' => new Controllers\Checkout()
         ];
 
         return $this;
@@ -77,6 +79,11 @@ final class Core {
 
     protected function setup_actions() {
         add_action('plugins_loaded', [
+            $this->controllers['language'],
+            'load_textdomain'
+        ]);
+
+        add_action('plugins_loaded', [
             $this->controllers['dependency-check'],
             'check_dependencies'
         ]);
@@ -90,6 +97,16 @@ final class Core {
             $this->controllers['dependency-check'],
             'print_dependencies_errors'
         ]);
+
+        add_action('woocommerce_review_order_before_submit', [
+            $this->controllers['checkout'],
+            'display_captcha'
+        ]);
+
+        add_action('woocommerce_checkout_process', [
+            $this->controllers['checkout'],
+            'verify_captcha'
+        ], 10, 2);
 
         return $this;
     }
